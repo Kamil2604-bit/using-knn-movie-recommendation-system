@@ -1,0 +1,65 @@
+import pandas as pd
+from sklearn.neighbors import NearestNeighbors
+from scipy.sparse import csr_matrix
+
+# Step 1: Create a small dataset
+movies = pd.DataFrame({
+    'movieId': [1, 2, 3, 4, 5,],
+    'title': ['hera pheri','welcome', 'ek tha tiger', 'dhol', 'kuch kuch hota hai']
+})
+
+ratings = pd.DataFrame({
+    'userId': [1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5,],
+    'movieId': [1, 2, 3, 2, 4, 1, 2, 5, 3, 4, 5, 1, 5],
+    'rating': [5, 4, 3, 5, 4, 4, 2, 5, 4, 4, 5, 3, 5]
+})
+
+# Step 2: Create a User-Movie Ratings Matrix
+user_movie_matrix = ratings.pivot(index='userId', columns='movieId', values='rating').fillna(0)
+
+# Convert the matrix to a sparse format for efficiency
+sparse_matrix = csr_matrix(user_movie_matrix.values)
+
+# Step 3: Train the KNN Model
+knn = NearestNeighbors(metric='cosine', algorithm='brute')
+knn.fit(sparse_matrix)
+
+# Step 4: Define Recommendation Function
+def recommend_movies(user_id, k=2):
+    """
+    Recommend movies for a given user based on K-Nearest Neighbors.
+    :param user_id: ID of the user for whom to recommend movies.
+    :param k: Number of similar users to consider.
+    :return: List of recommended movies.
+    """
+    if user_id not in user_movie_matrix.index:
+        return "User not found in the dataset."
+    
+    user_index = user_movie_matrix.index.get_loc(user_id)
+    
+    # Find K-nearest neighbors
+    distances, indices = knn.kneighbors([user_movie_matrix.iloc[user_index].values], n_neighbors=k+1)
+    
+    # Skip the first index (the user itself)
+    similar_users = indices.flatten()[1:]
+    
+    # Collect movies rated by similar users
+    recommended_movies = set()
+    for neighbor_index in similar_users:
+        neighbor_user_id = user_movie_matrix.index[neighbor_index]
+        neighbor_ratings = user_movie_matrix.loc[neighbor_user_id]
+        recommended_movies.update(neighbor_ratings[neighbor_ratings > 0].index)
+    
+    # Exclude movies already rated by the target user
+    user_ratings = user_movie_matrix.loc[user_id]
+    watched_movies = set(user_ratings[user_ratings > 0].index)
+    recommended_movies.difference_update(watched_movies)
+    
+    # Map movie IDs to titles
+    recommended_titles = movies[movies['movieId'].isin(recommended_movies)]['title'].tolist()
+    return recommended_titles
+
+# Step 5: Test the Recommendation System                                                      
+user_id = 5  # Specify a user ID to test
+recommendations = recommend_movies(user_id)
+print(f"Recommended Movies for User {user_id}:", recommendations)
